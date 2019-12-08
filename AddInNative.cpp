@@ -62,17 +62,17 @@ public:
 public slots:
 	void updateTime();
 };
-
+#include "handleMoc.h"
 //C:\Qt\Qt5.13.2\5.13.2\msvc2017\bin\moc.exe AddInNative.cpp -o handleMoc.h
 //AddInNative.cpp 
-#include "handleMoc.h"
+static QCamera *cam = new QCamera;
 void MyWtfError::updateTime() {
+	myLog("updateTime()");
 	if (!this->cam->isAvailable()) {
 		QMessageBox msgBox;
 		QString text = "Камера отвалилась. Необходим перезапуск. Camera not available.";
 		msgBox.setText(text);
 		msgBox.exec();
-		exit(1);
 	}
 }
 
@@ -117,6 +117,18 @@ const WCHAR_T* GetClassNames()
 
 }
 
+void func(){
+		if (!cam->isAvailable()) {
+			QMessageBox msgBox;
+			QString text = "Камера отвалилась. Необходим перезапуск. Camera not available.";
+			msgBox.setText(text);
+			msgBox.exec();
+		}
+		myLog("singleShot");
+		QTimer::singleShot(2000, func);
+};
+
+
 void CAddInNative::beginGivesMePhoto()
 {
 	QList<QCameraInfo> cameras = QCameraInfo::availableCameras();
@@ -128,7 +140,7 @@ void CAddInNative::beginGivesMePhoto()
 		myLog("msgBox end");
 		return;
 	}
-	QCamera *cam = new QCamera;
+	
 	cam->setCaptureMode(QCamera::CaptureStillImage);
 	QCameraImageCapture *cap = new QCameraImageCapture(cam);
 	cap->setCaptureDestination(QCameraImageCapture::CaptureToBuffer);
@@ -219,8 +231,29 @@ void CAddInNative::beginGivesMePhoto()
 	MyWtfError wtf(cam);
 	QTimer timer;
 	timer.setInterval(1000);
-	QObject::connect(&timer, SIGNAL(timeout()), &wtf, SLOT(updateTime()));
+	//QObject::connect(&timer, SIGNAL(timeout()), &wtf, SLOT(updateTime()));
+	QObject::connect(&timer, &QTimer::timeout, [=]() {
+		if (!cam->isAvailable()) {
+			QMessageBox msgBox;
+			QString text = "Камера отвалилась. Необходим перезапуск. Camera not available.";
+			msgBox.setText(text);
+			msgBox.exec();
+		}
+		myLog("Inline timer");
+	});
 	timer.start();
+
+	/*void(*func)() = []() {
+		if (!cam->isAvailable()) {
+			QMessageBox msgBox;
+			QString text = "Камера отвалилась. Необходим перезапуск. Camera not available.";
+			msgBox.setText(text);
+			msgBox.exec();
+		}
+		myLog("singleShot");
+		QTimer::singleShot(2000, func);
+	};*/
+	QTimer::singleShot(2000, func);
 }
 //---------------------------------------------------------------------------//
 //CAddInNative
