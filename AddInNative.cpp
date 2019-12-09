@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #endif
-
+#include <thread>
 #include <wchar.h>
 #include <string>
 #include "AddInNative.h"
@@ -22,7 +22,8 @@ static QApplication *a=new QApplication(argc, argv);
 
 #include "QtCore/qdatetime.h"
 #include <QtCore/qstring.h>
-
+#include <QtCore/qdir.h>
+#include <QtCore/qthread.h>
 void myLog(std::string text) {
 	std::ofstream outfile;
 
@@ -31,7 +32,6 @@ void myLog(std::string text) {
 	QString as = a.toString(time_format);
 
 	outfile.open("F:/log.txt", std::ios_base::app);
-	//outfile << text << std::endl;
 	outfile << as.toStdString()<<" | "<< text << std::endl;
 	outfile.close();
 }
@@ -53,38 +53,11 @@ uint32_t getLenShortWcharStr(const WCHAR_T* Source);
 #include "QtGui/qimage.h"//#include <QImage>
 
 
-class MyWtfError : public QObject
-{
-	Q_OBJECT
-public:
-	QCamera *cam;
-	MyWtfError(QCamera *cam):cam(cam){}
-public slots:
-	void updateTime();
-};
-#include "handleMoc.h"
-//C:\Qt\Qt5.13.2\5.13.2\msvc2017\bin\moc.exe AddInNative.cpp -o handleMoc.h
-//AddInNative.cpp 
-static QCamera *cam = new QCamera;
-void MyWtfError::updateTime() {
-	myLog("updateTime()");
-	if (!this->cam->isAvailable()) {
-		QMessageBox msgBox;
-		QString text = "Камера отвалилась. Необходим перезапуск. Camera not available.";
-		msgBox.setText(text);
-		msgBox.exec();
-	}
-}
+//static QCamera *cam = new QCamera;
 
 //---------------------------------------------------------------------------//
 long GetClassObject(const wchar_t* wsName, IComponentBase** pInterface)
 {
-	TCHAR szFileName[400];
-	GetModuleFileName(NULL, szFileName, 400);
-	std::string path = szFileName;
-	myLog("path:"+ path);
-
-
 	myLog("GetClassObject");
     if(!*pInterface)
     {
@@ -117,17 +90,40 @@ const WCHAR_T* GetClassNames()
 
 }
 
-void func(){
-		if (!cam->isAvailable()) {
-			QMessageBox msgBox;
-			QString text = "Камера отвалилась. Необходим перезапуск. Camera not available.";
-			msgBox.setText(text);
-			msgBox.exec();
-		}
-		myLog("singleShot");
-		QTimer::singleShot(2000, func);
-};
+//void func(){
+//		if (!cam->isAvailable()) {
+//			QMessageBox msgBox;
+//			QString text = "Камера отвалилась. Необходим перезапуск. Camera not available.";
+//			msgBox.setText(text);
+//			msgBox.exec();
+//		}
+//		myLog("singleShot");
+//		QTimer::singleShot(2000, func);
+//};
+// C:\Qt\Qt5.13.2\5.13.2\msvc2017_64\bin\moc.exe AddInNative.cpp -o handleMoc.h
+//class MyThread : public QThread
+//{
+//	Q_OBJECT
+//public:
+//	MyThread(QCamera *cam) :cam(cam) {}
+//	QCamera *cam;
+//	void run1();
+//};
 
+
+//void MyThread::run1()
+//{
+//	myLog("MyThread::run() begin");
+//	/*while (true) {
+//		myLog("MyThread::run()");
+//		if (!cam->isAvailable()) {
+//			QMessageBox msgBox;
+//			msgBox.setText("Camera not available.");
+//			msgBox.exec();
+//		}
+//		QThread::sleep(1);
+//	}*/
+//}
 
 void CAddInNative::beginGivesMePhoto()
 {
@@ -140,16 +136,21 @@ void CAddInNative::beginGivesMePhoto()
 		myLog("msgBox end");
 		return;
 	}
-	
+	QCamera *cam = new QCamera;
 	cam->setCaptureMode(QCamera::CaptureStillImage);
 	QCameraImageCapture *cap = new QCameraImageCapture(cam);
 	cap->setCaptureDestination(QCameraImageCapture::CaptureToBuffer);
 	QObject::connect(cap, &QCameraImageCapture::imageCaptured, [=](int id, QImage img) {
 		int static counter = 0;
-		QString filePath = "F:/img" + QString("").setNum(counter) + ".png";
+		QString path = "C:/imgs/";
+		QDir dir(path);
+		if (!dir.exists()) {
+			dir.mkdir(".");
+		}
+		QString filePath = path + QString("").setNum(counter) + ".png";
 		if (!img.save(filePath, "PNG")) {
 			QMessageBox msgBox;
-			msgBox.setText("Не получается сохранить изображение.");
+			msgBox.setText("Can not save image:""" + filePath + """.");
 			msgBox.exec();
 		}
 		myLog("Good save");
@@ -162,7 +163,6 @@ void CAddInNative::beginGivesMePhoto()
 		int size=filePath.toWCharArray(wstime);
 		wstime[size] = '\0';
 		pAsyncEvent->ExternalEvent(who, what, wstime);
-		
 	});
 
 	QObject::connect(cap, &QCameraImageCapture::readyForCaptureChanged, [=](bool state) {
@@ -176,7 +176,7 @@ void CAddInNative::beginGivesMePhoto()
 	QObject::connect(cap, QOverload<int, QCameraImageCapture::Error, const QString &>::of(&QCameraImageCapture::error),
 		[=](int id, QCameraImageCapture::Error error, const QString &errorString) {
 		QMessageBox msgBox;
-		QString text = "Ошибка с захватом видео из камеры. CameraImageCapture:" + errorString;
+		QString text = "Error with CameraImageCapture:" + errorString;
 		switch (error)
 		{
 		case QCameraImageCapture::NoError:
@@ -200,6 +200,7 @@ void CAddInNative::beginGivesMePhoto()
 		}
 		msgBox.setText(text);
 		msgBox.exec();
+		exit(1);
 	});
 	QObject::connect(cam, QOverload<QCamera::Error>::of(&QCamera::error),
 		[=](QCamera::Error value) {
@@ -228,10 +229,9 @@ void CAddInNative::beginGivesMePhoto()
 	});
 
 	cam->start();
-	MyWtfError wtf(cam);
-	QTimer timer;
+
+	/*QTimer timer;
 	timer.setInterval(1000);
-	//QObject::connect(&timer, SIGNAL(timeout()), &wtf, SLOT(updateTime()));
 	QObject::connect(&timer, &QTimer::timeout, [=]() {
 		if (!cam->isAvailable()) {
 			QMessageBox msgBox;
@@ -241,20 +241,36 @@ void CAddInNative::beginGivesMePhoto()
 		}
 		myLog("Inline timer");
 	});
-	timer.start();
-
-	/*void(*func)() = []() {
-		if (!cam->isAvailable()) {
-			QMessageBox msgBox;
-			QString text = "Камера отвалилась. Необходим перезапуск. Camera not available.";
-			msgBox.setText(text);
-			msgBox.exec();
+	timer.start();*/
+	//MyThread thread(cam);
+	//thread.start(QThread::Priority::LowPriority);
+	auto func = [=](QCamera *local_cam)
+	{
+		
+		myLog("func thread");
+		while (true) {
+			if (!local_cam->isAvailable()) {
+				MessageBox(
+					NULL,
+					"Camera not available.",
+					"Camera error",
+					MB_OK
+				);
+				return 0;
+			}
+			else {
+				QThread::sleep(1);
+			}
+			
 		}
-		myLog("singleShot");
-		QTimer::singleShot(2000, func);
-	};*/
-	QTimer::singleShot(2000, func);
+	};
+
+	std::thread th(func, cam);
+	th.detach();
 }
+
+
+
 //---------------------------------------------------------------------------//
 //CAddInNative
 CAddInNative::CAddInNative()
